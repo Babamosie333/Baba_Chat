@@ -1,0 +1,13 @@
+# render.yaml
+services:
+  - type: web
+    name: baba-chat-app
+    env: node
+    plan: free # Persistent free tier
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
