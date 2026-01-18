@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev\" \"tsx watch server.ts\"",
+    "dev": "tsx server.ts",
     "build": "next build",
-    "start": "npx tsx server.ts",
+    "start": "NODE_ENV=production npx tsx server.ts",
     "lint": "next lint"
   },
   "dependencies": {

@@ -1,45 +1,32 @@
 import { createServer } from "http";
-import { Server, Socket } from "socket.io";
+import next from "next";
+import { Server } from "socket.io";
 
-// 1. Initialize the HTTP server
-const httpServer = createServer((req, res) => {
-  // Simple health check for Render to confirm the server is "Live"
-  res.writeHead(200);
-  res.end("Chat Server is Running");
-});
+const dev = process.env.NODE_ENV !== "production";
+const app = next({ dev });
+const handle = app.getRequestHandler();
 
-// 2. Initialize Socket.io with production CORS settings
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*", // In production, this allows your Next.js frontend to connect
-    methods: ["GET", "POST"],
-  },
-});
-
-const onlineUsers = new Set<string>();
-
-io.on("connection", (socket: Socket) => {
-  onlineUsers.add(socket.id);
-  io.emit("users-online", Array.from(onlineUsers));
-
-  socket.on("message", (text: string) => {
-    io.emit("message", { text, userId: socket.id });
+// Wait for Next.js to prepare before starting the server
+app.prepare().then(() => {
+  const httpServer = createServer((req, res) => {
+    // This tells the server to let Next.js handle all website requests
+    handle(req, res);
   });
 
-  socket.on("disconnect", () => {
-    onlineUsers.delete(socket.id);
-    io.emit("users-online", Array.from(onlineUsers));
+  const io = new Server(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+    },
   });
-});
 
-/**
- * 3. CRITICAL DEPLOYMENT FIX
- * Render assigns a dynamic port via process.env.PORT.
- * Using '0.0.0.0' as the host is mandatory for Render to detect your server.
- */
-const PORT = process.env.PORT || 3001;
-const HOST = '0.0.0.0';
+  io.on("connection", (socket) => {
+    console.log("User connected:", socket.id);
+    socket.on("message", (msg) => io.emit("message", msg));
+  });
 
-httpServer.listen(Number(PORT), HOST, () => {
-  console.log(`>>> Success: Server is listening on ${HOST}:${PORT}`);
+  const PORT = process.env.PORT || 3000;
+  httpServer.listen(PORT, () => {
+    console.log(`> Ready on http://localhost:${PORT}`);
+  });
 });
