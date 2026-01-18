@@ -1,11 +1,17 @@
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 
-const httpServer = createServer();
+// 1. Initialize the HTTP server
+const httpServer = createServer((req, res) => {
+  // Simple health check for Render to confirm the server is "Live"
+  res.writeHead(200);
+  res.end("Chat Server is Running");
+});
 
+// 2. Initialize Socket.io with production CORS settings
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Allows your Next.js frontend to connect from any URL
+    origin: "*", // In production, this allows your Next.js frontend to connect
     methods: ["GET", "POST"],
   },
 });
@@ -26,11 +32,14 @@ io.on("connection", (socket: Socket) => {
   });
 });
 
-// Render provides a PORT environment variable automatically
+/**
+ * 3. CRITICAL DEPLOYMENT FIX
+ * Render assigns a dynamic port via process.env.PORT.
+ * Using '0.0.0.0' as the host is mandatory for Render to detect your server.
+ */
 const PORT = process.env.PORT || 3001;
-// '0.0.0.0' allows external access to your app on the internet
-const HOST = '0.0.0.0'; 
+const HOST = '0.0.0.0';
 
 httpServer.listen(Number(PORT), HOST, () => {
-  console.log(`> Chat Server is live and accessible at http://${HOST}:${PORT}`);
+  console.log(`>>> Success: Server is listening on ${HOST}:${PORT}`);
 });
