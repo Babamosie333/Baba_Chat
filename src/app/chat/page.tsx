@@ -1,138 +1,143 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { MessageCircle, Shield, Send, User, Users, LogOut, Circle } from 'lucide-react';
-import Link from 'next/link';
+import { useEffect, useState, useRef } from "react";
+import { io, Socket } from "socket.io-client";
+import { Send, Users, ShieldCheck, LogOut } from "lucide-react";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-type ChatMessage = {
-  text: string;
-  isOwn: boolean;
-  time: string;
-};
+/** Utility for Tailwind classes */
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+// CRITICAL: Replace with your actual Render URL
+const SOCKET_URL = "https://baba-chat.onrender.com";
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
+  const [messages, setMessages] = useState<{ text: string; userId: string }[]>([]);
+  const [input, setInput] = useState("");
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [status, setStatus] = useState<"CONNECTED" | "OFFLINE">("OFFLINE");
   const socketRef = useRef<Socket | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Replace 'your-app-name' with the actual URL Render gave you
-    const PRODUCTION_URL = "https://your-app-name.onrender.com";
-    const URL = process.env.NODE_ENV === "production" ? PRODUCTION_URL : "http://localhost:3001";
-
-    const socket = io(URL, {
-      transports: ['websocket'],
+    // Initialize connection to Render
+    socketRef.current = io(SOCKET_URL, {
+      transports: ["websocket"],
+      secure: true,
     });
 
-    socketRef.current = socket;
+    socketRef.current.on("connect", () => {
+      setStatus("CONNECTED");
+    });
 
-    socket.on('connect', () => setIsConnected(true));
-    socket.on('disconnect', () => setIsConnected(false));
-    socket.on('users-online', (users: string[]) => setOnlineUsers(users));
-    socket.on('message', (msg: { text: string; userId: string }) => {
-      setMessages((prev) => [...prev, {
-        text: msg.text,
-        isOwn: socket.id === msg.userId,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
+    socketRef.current.on("disconnect", () => {
+      setStatus("OFFLINE");
+    });
+
+    socketRef.current.on("users-online", (users: string[]) => {
+      setOnlineCount(users.length);
+    });
+
+    socketRef.current.on("message", (message: { text: string; userId: string }) => {
+      setMessages((prev) => [...prev, message]);
     });
 
     return () => {
-      socket.disconnect();
+      socketRef.current?.disconnect();
     };
   }, []);
 
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const sendMessage = () => {
-    if (!socketRef.current || !input.trim()) return;
-    socketRef.current.emit('message', input.trim());
-    setInput('');
+  const sendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && socketRef.current) {
+      socketRef.current.emit("message", input);
+      setInput("");
+    }
   };
 
   return (
-    <div className="flex h-screen bg-[#0f172a] text-slate-200 overflow-hidden font-sans">
-      <aside className="w-20 md:w-72 bg-slate-900/50 border-r border-white/5 flex flex-col">
-        <div className="p-6 border-b border-white/5 flex items-center space-x-3">
-          <div className="w-10 h-10 bg-cyan-600 rounded-xl flex items-center justify-center">
-            <MessageCircle className="w-6 h-6 text-white" />
+    <div className="flex h-screen bg-[#0a0f1a] text-white overflow-hidden">
+      {/* Sidebar */}
+      <div className="w-64 border-r border-white/10 flex flex-col p-6">
+        <div className="flex items-center gap-3 mb-10">
+          <div className="bg-blue-500 p-2 rounded-xl">
+            <ShieldCheck size={24} />
           </div>
-          <span className="font-bold text-xl hidden md:block">Baba Chat</span>
+          <h1 className="text-xl font-bold font-sans">Baba Chat</h1>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <p className="text-[10px] font-bold text-slate-500 uppercase p-2 hidden md:block">Online — {onlineUsers.length}</p>
-          {onlineUsers.map((user, i) => (
-            <div key={i} className="flex items-center space-x-3 p-3 rounded-xl hover:bg-white/5">
-              <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center relative">
-                <User className="w-4 h-4 text-slate-400" />
-                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
-              </div>
-              <span className="text-sm font-medium hidden md:block truncate">
-                {user === socketRef.current?.id ? "You" : `User_${user.slice(0, 4)}`}
-              </span>
-            </div>
-          ))}
+        
+        <div className="flex-1">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Online — {onlineCount}</p>
         </div>
-        <div className="p-4 border-t border-white/5">
-          <Link href="/" className="flex items-center space-x-3 p-3 text-red-400 hover:bg-red-500/10 rounded-xl">
-            <LogOut className="w-5 h-5" />
-            <span className="font-semibold hidden md:block">Leave</span>
-          </Link>
-        </div>
-      </aside>
 
-      <main className="flex-1 flex flex-col bg-gradient-to-b from-slate-900 to-[#0f172a]">
-        <header className="h-20 border-b border-white/5 flex items-center justify-between px-8">
+        <button className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors text-sm font-medium mt-auto">
+          <LogOut size={18} /> Leave
+        </button>
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        <div className="h-20 border-b border-white/10 flex items-center justify-between px-8">
           <div>
-            <h2 className="text-lg font-bold flex items-center">
-              Global Room
-              <Circle className={`w-2 h-2 ml-2 ${isConnected ? 'fill-emerald-500 text-emerald-500' : 'fill-red-500 text-red-500 animate-pulse'}`} />
-            </h2>
-            <span className="text-[10px] text-slate-500 uppercase font-bold">Encrypted</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">Global Room</h2>
+              <div className={cn("w-2 h-2 rounded-full", status === "CONNECTED" ? "bg-green-500 animate-pulse" : "bg-red-500")} />
+            </div>
+            <p className="text-xs text-gray-500 font-mono">ENCRYPTED</p>
           </div>
-          <div className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-full text-[10px] font-bold flex items-center">
-            <Shield className="w-3 h-3 mr-2 text-cyan-400" />
-            {isConnected ? 'SECURE' : 'OFFLINE'}
+          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-lg">
+            <ShieldCheck size={14} className="text-blue-400" />
+            <span className="text-[10px] font-bold uppercase tracking-tighter">{status}</span>
           </div>
-        </header>
+        </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-4">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-20"><Users className="w-16 h-16 mb-4"/><p>No messages yet.</p></div>
+            <div className="h-full flex flex-col items-center justify-center opacity-20">
+              <Users size={64} className="mb-4" />
+              <p>No messages yet.</p>
+            </div>
           ) : (
             messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] p-4 rounded-2xl ${msg.isOwn ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-white/10 text-slate-200 rounded-tl-none border border-white/5'}`}>
-                  <p>{msg.text}</p>
-                  <span className="text-[9px] opacity-40 block mt-2">{msg.time}</span>
+              <div key={i} className={cn("flex flex-col", msg.userId === socketRef.current?.id ? "items-end" : "items-start")}>
+                <div className={cn("max-w-[70%] p-3 rounded-2xl text-sm", 
+                  msg.userId === socketRef.current?.id ? "bg-blue-600 rounded-tr-none" : "bg-white/10 rounded-tl-none")}>
+                  {msg.text}
                 </div>
               </div>
             ))
           )}
-          <div ref={messagesEndRef} />
+          <div ref={scrollRef} />
         </div>
 
-        <div className="p-6 border-t border-white/5">
-          <div className="max-w-4xl mx-auto flex gap-3">
+        {/* Input */}
+        <div className="p-8">
+          <form onSubmit={sendMessage} className="relative group">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Type message..."
-              className="flex-1 bg-slate-800/80 border border-white/10 rounded-xl px-5 py-3 text-white focus:outline-none focus:border-cyan-500"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 pr-16 focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-gray-600"
             />
-            <button onClick={sendMessage} disabled={!isConnected} className="p-3 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-white transition-all disabled:opacity-20">
-              <Send className="w-6 h-6" />
+            <button 
+              type="submit"
+              disabled={status === "OFFLINE"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 p-2.5 rounded-xl transition-all"
+            >
+              <Send size={20} />
             </button>
-          </div>
+          </form>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
