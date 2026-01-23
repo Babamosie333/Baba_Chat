@@ -1,66 +1,89 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { Send, Users, ShieldCheck, LogOut } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-/** Utility for Tailwind classes */
+/** Tailwind merge helper */
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// CRITICAL: Replace with your actual Render URL
+// Your live backend URL
 const SOCKET_URL = "https://baba-chat.onrender.com";
 
+type ChatMessage = {
+  text: string;
+  userId: string;
+};
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState<{ text: string; userId: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [onlineCount, setOnlineCount] = useState(0);
   const [status, setStatus] = useState<"CONNECTED" | "OFFLINE">("OFFLINE");
-  const socketRef = useRef<Socket | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
+  const socketRef = useRef<Socket | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Connect once on mount
   useEffect(() => {
-    // Initialize connection to Render
-    socketRef.current = io(SOCKET_URL, {
+    const socket = io(SOCKET_URL, {
       transports: ["websocket"],
       secure: true,
     });
 
-    socketRef.current.on("connect", () => {
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
       setStatus("CONNECTED");
     });
 
-    socketRef.current.on("disconnect", () => {
+    socket.on("disconnect", () => {
       setStatus("OFFLINE");
     });
 
-    socketRef.current.on("users-online", (users: string[]) => {
+    // Online users list from server
+    socket.on("users-online", (users: string[]) => {
       setOnlineCount(users.length);
     });
 
-    socketRef.current.on("message", (message: { text: string; userId: string }) => {
+    // Incoming messages from server
+    socket.on("message", (message: ChatMessage) => {
       setMessages((prev) => [...prev, message]);
     });
 
     return () => {
-      socketRef.current?.disconnect();
+      socket.disconnect();
     };
   }, []);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto scroll on new message
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim() && socketRef.current) {
-      socketRef.current.emit("message", input);
-      setInput("");
+    const text = input.trim();
+    if (!text || !socketRef.current) return;
+
+    // Send plain text; server adds userId and broadcasts
+    socketRef.current.emit("message", text);
+    setInput("");
+  };
+
+  const handleLeave = () => {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
     }
+    setStatus("OFFLINE");
+    setOnlineCount(0);
+    setMessages([]);
   };
 
   return (
@@ -73,12 +96,17 @@ export default function ChatPage() {
           </div>
           <h1 className="text-xl font-bold font-sans">Baba Chat</h1>
         </div>
-        
+
         <div className="flex-1">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Online — {onlineCount}</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">
+            ONLINE — {onlineCount}
+          </p>
         </div>
 
-        <button className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors text-sm font-medium mt-auto">
+        <button
+          onClick={handleLeave}
+          className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors text-sm font-medium mt-auto"
+        >
           <LogOut size={18} /> Leave
         </button>
       </div>
@@ -89,13 +117,20 @@ export default function ChatPage() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold">Global Room</h2>
-              <div className={cn("w-2 h-2 rounded-full", status === "CONNECTED" ? "bg-green-500 animate-pulse" : "bg-red-500")} />
+              <div
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  status === "CONNECTED" ? "bg-green-500 animate-pulse" : "bg-red-500"
+                )}
+              />
             </div>
             <p className="text-xs text-gray-500 font-mono">ENCRYPTED</p>
           </div>
           <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-lg">
             <ShieldCheck size={14} className="text-blue-400" />
-            <span className="text-[10px] font-bold uppercase tracking-tighter">{status}</span>
+            <span className="text-[10px] font-bold uppercase tracking-tighter">
+              {status}
+            </span>
           </div>
         </div>
 
@@ -108,9 +143,21 @@ export default function ChatPage() {
             </div>
           ) : (
             messages.map((msg, i) => (
-              <div key={i} className={cn("flex flex-col", msg.userId === socketRef.current?.id ? "items-end" : "items-start")}>
-                <div className={cn("max-w-[70%] p-3 rounded-2xl text-sm", 
-                  msg.userId === socketRef.current?.id ? "bg-blue-600 rounded-tr-none" : "bg-white/10 rounded-tl-none")}>
+              <div
+                key={i}
+                className={cn(
+                  "flex flex-col",
+                  msg.userId === socketRef.current?.id ? "items-end" : "items-start"
+                )}
+              >
+                <div
+                  className={cn(
+                    "max-w-[70%] p-3 rounded-2xl text-sm",
+                    msg.userId === socketRef.current?.id
+                      ? "bg-blue-600 rounded-tr-none"
+                      : "bg-white/10 rounded-tl-none"
+                  )}
+                >
                   {msg.text}
                 </div>
               </div>
@@ -128,7 +175,7 @@ export default function ChatPage() {
               placeholder="Type message..."
               className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 pr-16 focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-gray-600"
             />
-            <button 
+            <button
               type="submit"
               disabled={status === "OFFLINE"}
               className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 p-2.5 rounded-xl transition-all"
